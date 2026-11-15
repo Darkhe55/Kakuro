@@ -1,0 +1,208 @@
+/* 数和（Kakuro）—— 棋盘与自定义题板扩展样式 */
+
+.kk-board {
+  --kk-block: #252b33;
+  --kk-block-line: rgba(255, 255, 255, 0.22);
+  --kk-clue: #f5efe2;
+  --kk-white: #fffdf8;
+  --kk-grid: #d8d0c0;
+}
+
+.kk-board-bg {
+  fill: var(--kk-block);
+}
+
+.kk-block {
+  fill: var(--kk-block);
+}
+
+.kk-block-diag {
+  stroke: var(--kk-block-line);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.kk-board .kk-clue {
+  fill: var(--kk-clue);
+  font-family: var(--font);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.kk-board .kk-clue.h {
+  text-anchor: start;
+}
+
+.kk-board .kk-clue.v {
+  text-anchor: end;
+}
+
+.kk-board .kk-clue.bad {
+  fill: #ffb4a8;
+}
+
+.kk-board .kk-cell {
+  fill: var(--kk-white);
+  stroke: var(--kk-grid);
+  stroke-width: 1;
+}
+
+.kk-board .kk-cell.peer {
+  fill: #f3f7f4;
+}
+
+.kk-board .kk-cell.bad {
+  fill: #fdeceb;
+}
+
+.kk-board .kk-bad {
+  fill: var(--error);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.kk-board .kk-sel {
+  fill: none;
+  stroke: var(--loop);
+  stroke-width: 3;
+  pointer-events: none;
+}
+
+.kk-board .kk-num {
+  fill: var(--num);
+  font-family: var(--font);
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.kk-board .kk-num.kk-pop {
+  animation: kkPop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes kkPop {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.2;
+  }
+  55% {
+    transform: scale(1.22);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.kk-board .kk-outline {
+  fill: none;
+  stroke: #1a1f25;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+/* ── 自定义题板：黑格外观 ── */
+.custom-cell.kk-editor-block {
+  background: #252b33;
+  border-color: #252b33;
+  color: #f5efe2;
+}
+
+.custom-cell.kk-editor-block:hover {
+  border-color: var(--loop);
+}
+
+/* ── 自定义题板：附加面板 ── */
+.custom-extras {
+  margin-top: 10px;
+}
+
+.custom-extras[hidden] {
+  display: none;
+}
+
+.kk-editor {
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbf8f1;
+}
+
+.kk-editor-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.kk-editor-pick {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  min-height: 1.2em;
+}
+
+.kk-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.kk-editor-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.kk-editor-row input {
+  width: 64px;
+  padding: 5px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+
+.kk-editor-row input:disabled {
+  opacity: 0.45;
+  background: #f1ece2;
+}
+
+.kk-editor-row button.btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.kk-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 72px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: #fff;
+  color: var(--ink);
+}
+
+.kk-editor-note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.kk-editor-note.bad {
+  color: var(--error);
+}
