@@ -163,7 +163,9 @@ export function deserializeState(data: Record<string, unknown>): KakuroState | n
   const height = Number(data.height)
   if (!Number.isInteger(width) || !Number.isInteger(height)) return null
   const size = width * height
-  if (size <= 0 || size > 400) return null
+  // 存档上限与题面一致：识图导入的大盘面可以到 MAX_BOARD_SIZE(64)×64 = 4096 格。
+  // 旧存档（≤20×20）完全不受影响。
+  if (size <= 0 || size > 4096) return null
   const out = new Array<number>(size).fill(0)
   const values = data.values
   if (typeof values === 'string') {
