@@ -122,6 +122,26 @@ npm run ui-check  # Playwright 冒烟测试（需先启动 dev 或 preview）
 
 浏览器验证脚本使用 `playwright-core` + 本机 Edge（可用环境变量 `EDGE_PATH` 覆盖路径），截图输出到 `output/playwright/`。
 
+## 图片导入题库（识图 CLI）
+
+```bash
+npm run import-image -- month.png                # 识别并预览（不写入）
+npm run import-image -- month.png --verify       # 额外求解 / 唯一性检查（超大盘面会超时警告）
+npm run import-image -- month.png --append       # 写入 src/game/imported-puzzles.ts
+npm run import-image -- month.png --json out.json  # 导出识别结果
+```
+
+- 全自动识图：Playwright + 本机 Edge 取像素 → 细线投影定位网格 → 黑白格判定 →
+  黑格内白色小字（提示和）连通域提取 → 字形聚类 + 多字体多字号模板匹配判读 → 结构校验。
+- 原图线索约定：黑格**右上角 = 横向提示**、**左下角 = 纵向提示**；斜线会被自动擦除，避免与数字粘连。
+- 结构约束（白格必须有横纵提示、段长 ≤9、提示和落在区间内）会自动修复少量越界提示；
+  仍有疑义时用 `--map 簇号=数字`（覆盖字形簇判读）或
+  `--fix "列,行=横.纵"`（覆盖某格提示，如 `--fix "51,22=45.0"`）人工修正后重跑。
+- 导入题写入 `src/game/imported-puzzles.ts`，`npm run gen` 不会覆盖；游戏启动时会与内置题一起加载。
+  导入题不受自定义题板 20×20 限制（`MAX_BOARD_SIZE = 64`），所以 62×62 这类真实大盘面也能载入。
+- 限制：超大 Kakuro 的唯一性/可解校验通常会上百倍超时（`--verify` 只警告）；单字仅 7px 左右，
+  识图准确率约 99%（本项目 month.png 62×62 中 1648 个提示约有十余个需人工核对）。
+
 ## 项目结构
 
 ```
@@ -158,3 +178,4 @@ scripts/
 - 逻辑解题器只做可证明的排除，不猜测；内置题都保证能推完，但极端自定义题可能中途卡关，此时可用「显示解」。
 - 自定义题保存时的唯一解校验有节点 / 时间预算：20×20 的大盘面可能提示「求解超时」，可减少盘面或补全提示后重试。
 - 题目存档按 `puzzleId` 区分；删除自定义题会同时清除该题的进度。
+

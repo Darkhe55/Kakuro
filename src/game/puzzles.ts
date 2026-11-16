@@ -8,9 +8,11 @@
 import type { GameState, Puzzle } from '../core/types.ts'
 import { decodeRawPuzzle, decodeSolution } from './rules.ts'
 import { RAW_PUZZLES } from './puzzles-data.ts'
+import { IMPORTED_PUZZLES } from './imported-puzzles.ts'
 import { asKakuroPuzzle, type KakuroPuzzle, type KakuroState, type RawKakuroPuzzle } from './types.ts'
 
-const RAW = RAW_PUZZLES as RawKakuroPuzzle[]
+// 内置题 + 图片识别导入题（imported-puzzles.ts 由 scripts/import-image.mjs --append 写入）
+const RAW = [...RAW_PUZZLES, ...IMPORTED_PUZZLES] as RawKakuroPuzzle[]
 
 const decoded = new Map<string, KakuroPuzzle>()
 for (const raw of RAW) {

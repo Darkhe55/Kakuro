@@ -13,6 +13,8 @@ export type { KakuroModel, KakuroPuzzle, KakuroSegment } from './types.ts'
 
 /** 数和允许的最大盘面尺寸（自定义题板上限） */
 export const MAX_SIZE = 20
+/** 内置题 / 图片识别导入题的盘面上限（导入的真实题图可能远大于自定义题板上限） */
+export const MAX_BOARD_SIZE = 64
 /** 单段最长 9 格（数字 1..9 不重复） */
 export const MAX_RUN = 9
 
@@ -52,8 +54,8 @@ export function invalidateModel(p: KakuroPuzzle): void {
 }
 
 export function buildModel(p: KakuroPuzzle): KakuroModel {
-  const width = Math.max(2, Math.min(MAX_SIZE, Math.floor(p.width) || 0))
-  const height = Math.max(2, Math.min(MAX_SIZE, Math.floor(p.height) || 0))
+  const width = Math.max(2, Math.min(MAX_BOARD_SIZE, Math.floor(p.width) || 0))
+  const height = Math.max(2, Math.min(MAX_BOARD_SIZE, Math.floor(p.height) || 0))
   const size = width * height
   const blocks = blocksOf(p, size)
   const hClues = n0(p.hClues, size)
@@ -289,12 +291,12 @@ export interface DecodedBoard {
   vClues: number[]
 }
 
-export function decodeBoard(text: string, width?: number, height?: number): DecodedBoard | null {
+export function decodeBoard(text: string, width?: number, height?: number, maxSize = MAX_SIZE): DecodedBoard | null {
   if (typeof text !== 'string' || !text.trim()) return null
   const rows = text.split('/')
   const h = height ?? rows.length
   const w = width ?? (rows[0] ? rows[0].split(',').length : 0)
-  if (w < 2 || h < 2 || w > MAX_SIZE || h > MAX_SIZE) return null
+  if (w < 2 || h < 2 || w > maxSize || h > maxSize) return null
   if (rows.length !== h) return null
   const size = w * h
   const blocks = new Array<number>(size).fill(0)
@@ -384,8 +386,8 @@ export function computeClues(
 export function decodeRawPuzzle(raw: RawKakuroPuzzle): KakuroPuzzle | null {
   if (!raw || typeof raw.id !== 'string' || !raw.id) return null
   if (!Number.isInteger(raw.width) || !Number.isInteger(raw.height)) return null
-  if (raw.width < 2 || raw.height < 2 || raw.width > MAX_SIZE || raw.height > MAX_SIZE) return null
-  const board = decodeBoard(raw.board, raw.width, raw.height)
+  if (raw.width < 2 || raw.height < 2 || raw.width > MAX_BOARD_SIZE || raw.height > MAX_BOARD_SIZE) return null
+  const board = decodeBoard(raw.board, raw.width, raw.height, MAX_BOARD_SIZE)
   if (!board) return null
   const solution = typeof raw.solution === 'string' && raw.solution.length > 0
     ? decodeSolution(raw.solution, raw.width * raw.height)
