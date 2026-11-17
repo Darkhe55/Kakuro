@@ -62,7 +62,7 @@ const meta = {
   customMaxH: 20,
   targetKind: 'cell' as const,
   interactionHint:
-    '<kbd>左键</kbd> 选中格 · <kbd>数字按钮</kbd>/<kbd>1–9</kbd> 填数 · <kbd>0</kbd>/<kbd>退格</kbd> 清除 · <kbd>方向键</kbd> 移动',
+    '<kbd>左键</kbd> 选中格 · <kbd>数字按钮</kbd>/<kbd>1–9</kbd> 填数 · <kbd>N</kbd> 笔记 · <kbd>0</kbd>/<kbd>退格</kbd> 清除 · <kbd>方向键</kbd> 移动',
 }
 
 const custom: CustomSupport = {
