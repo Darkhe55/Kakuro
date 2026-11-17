@@ -3,8 +3,8 @@
  *
  * 覆盖：
  *   1. 内置题载入 / 题库数量；
- *   2. 鼠标左键填数、右键清除、拖拽涂写；
- *   3. 键盘 1–9 填数、0/Backspace 清除、方向键移动光标；
+ *   2. 鼠标左键只选中（不写入）、数字面板填数/清除、右键不参与数字输入；
+ *   3. 键盘 1–9 填数、0/Backspace 清除、方向键移动光标（输入后不自动跳格）；
  *   4. 撤销 / 重做 / 检查 / 提示一格 / 显示解；
  *   5. 逻辑解题逐帧回放（等待回放结束并校验盘面）；
  *   6. 自定义题板：画黑格、文本导入、保存（唯一解审计）、载入、编辑回填、两步确认删除；
@@ -124,22 +124,41 @@ const emptyWhites = async () => {
   return whites.filter((i) => s.values[i] === 0)
 }
 
-/* ── 2. 鼠标左键填数 / 右键清除 ── */
+/* ── 2. 鼠标左键只选中（不写入）；数字面板写入；右键不参与数字输入 ── */
 const empties = await emptyWhites()
 const target = empties[0]
 let pt = await cellPoint(target)
 await page.mouse.click(pt.x, pt.y)
 session = await getSession()
-if (session.values[target] !== 1) fail(`左键点击后格子值 ${session.values[target]} != 1`)
-else ok('左键点击填数 1')
+if (session.values[target] !== 0) fail(`左键点击后格子值 ${session.values[target]} != 0（应只选中）`)
+else ok('左键点击只选中、不写入')
 if (session.selected !== target) fail(`点击后光标未移到该格（${session.selected} != ${target}）`)
+else ok('点击后光标移到该格')
+// 再点一次：不循环
+await page.mouse.click(pt.x, pt.y)
+session = await getSession()
+if (session.values[target] !== 0) fail('再次左键点击不应循环写入')
+else ok('再次左键点击不循环')
+// 数字面板写入选中格
+await page.click('#digit-pad [data-digit="3"]')
+await page.waitForTimeout(120)
+session = await getSession()
+if (session.values[target] !== 3) fail(`数字面板写入失败：${session.values[target]} != 3`)
+else ok('数字面板写入选中格')
+if (session.selected !== target) fail('数字面板写入后光标不应移动')
+else ok('数字面板写入后光标保持')
+await page.click('#digit-pad [data-digit="0"]')
+await page.waitForTimeout(120)
+session = await getSession()
+if (session.values[target] !== 0) fail('数字面板清除失败')
+else ok('数字面板清除')
 await shot('03-mouse-input')
 
 pt = await cellPoint(target)
 await page.mouse.click(pt.x, pt.y, { button: 'right' })
 session = await getSession()
-if (session.values[target] !== 0) fail(`右键后格子值 ${session.values[target]} != 0`)
-else ok('右键清除')
+if (session.values[target] !== 0) fail(`右键后格子值 ${session.values[target]} != 0（右键不应清除）`)
+else ok('右键不参与数字输入（不清除）')
 
 /* ── 3. 键盘 1–9 / 0 / 方向键 ── */
 await page.mouse.click(pt.x, pt.y)
@@ -182,7 +201,7 @@ for (const puzzleName of ['初识数和', '九九归一']) {
 }
 if (!arrowTested) fail('找不到可用于方向键测试的相邻白格')
 
-// 拖拽涂写：找两个水平相邻的白格，从第一格拖到第二格
+// 拖拽不涂写：找两个水平相邻的白格，从第一格拖到第二格，两格都不应被写入
 {
   const s = await getSession()
   const white = await whiteIndexes()
@@ -204,11 +223,11 @@ if (!arrowTested) fail('找不到可用于方向键测试的相邻白格')
     await page.mouse.up()
     await page.waitForTimeout(150)
     const s2 = await getSession()
-    if (s2.values[pair[0]] !== 1 || s2.values[pair[1]] !== 1) {
-      fail(`拖拽涂写失败：${s2.values[pair[0]]}, ${s2.values[pair[1]]}`)
-    } else ok('拖拽连续涂写')
+    if (s2.values[pair[0]] !== 0 || s2.values[pair[1]] !== 0) {
+      fail(`左键拖动不应写入数字：${s2.values[pair[0]]}, ${s2.values[pair[1]]}`)
+    } else ok('左键拖动不改数字（不涂写）')
   } else {
-    fail('找不到水平相邻白格用于拖拽测试')
+    fail('找不到水平相邻白格用于拖动测试')
   }
 }
 
@@ -278,6 +297,8 @@ if (!dupPair) {
 const undoCell = (await emptyWhites())[0]
 pt = await cellPoint(undoCell)
 await page.mouse.click(pt.x, pt.y)
+await page.keyboard.press('1')
+await page.waitForTimeout(80)
 session = await getSession()
 if (session.values[undoCell] !== 1) fail('撤销测试前未成功落子')
 await page.click('#btn-undo')

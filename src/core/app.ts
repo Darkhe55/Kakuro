@@ -105,8 +105,9 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
 
       <div class="legend">
         <div>${interactionHint}</div>
-        <div><kbd>按住拖拽</kbd> 连续涂写 · <kbd>中键/拖拽</kbd> 平移画布</div>
-        <div><kbd>滚轮</kbd> 缩放 · <kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd> 放大/缩小/复位</div>
+        <div><kbd>左键</kbd> 选中格 · <kbd>数字按钮</kbd>/<kbd>1–9</kbd> 填数 · <kbd>0</kbd>/<kbd>退格</kbd> 清除</div>
+        <div><kbd>方向键</kbd> 移动选中格 · <kbd>中键/空白拖拽</kbd> 平移画布 · <kbd>滚轮</kbd> 缩放</div>
+        <div><kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd> 放大/缩小/复位</div>
         <div><kbd>Z</kbd> / <kbd>Shift+Z</kbd> 撤销 / 重做</div>
         <div><kbd>C</kbd> 检查 · <kbd>Esc</kbd> 清空 · <kbd>L</kbd> 逻辑解题/停止回放 · <kbd>P</kbd> 暂停/继续</div>
         <div><kbd>R</kbd> 随机 · <kbd>M</kbd> 音效开关</div>
@@ -120,7 +121,10 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
         <button class="btn" id="zoom-in" type="button" title="放大">+</button>
         <button class="btn" id="zoom-reset" type="button">复位</button>
       </div>
-      <div id="board"></div>
+      <div class="board-stage">
+        <div id="board"></div>
+        <div class="digit-pad" id="digit-pad" hidden></div>
+      </div>
     </main>
   </div>
 
@@ -265,6 +269,67 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
   })
 
 
+  /* ———————————————————— 数字面板 / 选中格 ———————————————————— */
+
+  /** 数和固定 1..9 */
+  function digitMax(): number {
+    return 9
+  }
+
+  /** 当前选中的格子（null = 未选中） */
+  function cursorIndex(): number | null {
+    if (!session || !adapter.keyboard) return null
+    return adapter.keyboard.cursor(session.state)
+  }
+
+  /** 重新渲染右侧数字面板（1..9 + 清除），并高亮当前格的值 */
+  function renderDigitPad(): void {
+    const el = document.getElementById('digit-pad')
+    if (!el) return
+    if (!session) {
+      el.hidden = true
+      el.innerHTML = ''
+      return
+    }
+    el.hidden = false
+    const cur = cursorIndex()
+    const current = cur === null ? 0 : adapter.valueAt(session.state, cur)
+    const buttons: string[] = []
+    for (let v = 1; v <= digitMax(); v++) {
+      buttons.push(
+        `<button class="digit-btn${current === v ? ' active' : ''}" type="button" data-digit="${v}">${v}</button>`,
+      )
+    }
+    buttons.push(`<button class="digit-btn clear" type="button" data-digit="0">清除</button>`)
+    el.innerHTML = buttons.join('')
+  }
+
+  /** 数和的高亮由 render.ts 依据 state.selected 直接绘制，这里无需额外处理 */
+  function applyCursor(): void {}
+
+  /** 设置选中格并重绘（不产生落子） */
+  function setCursor(index: number | null): void {
+    if (!session || !adapter.keyboard) return
+    adapter.keyboard.setCursor(session.state, index)
+    saveState()
+    renderBoardOnly()
+    renderDigitPad()
+  }
+
+  /** 数字按钮 / 键盘写入选中格；value = 0 表示清除 */
+  function writeSelected(value: number): void {
+    if (!session || logicPlayer.playing || !adapter.keyboard) return
+    const cur = cursorIndex()
+    if (cur === null) {
+      setStatus('先点选一个格子，再点数字按钮或按键填数。')
+      return
+    }
+    const move = adapter.keyboard.input(session.state, session.puzzle, cur, value >= 1 ? value : 0)
+    if (!move) return
+    pushMove(move)
+    refresh()
+  }
+
   /* ———————————————————— 校验与状态 ———————————————————— */
 
   function currentResult() {
@@ -280,11 +345,13 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
     board.innerHTML = svg
     bindBoardEvents()
     view.apply(board.querySelector<SVGSVGElement>('svg.board-svg'))
+    applyCursor()
   }
 
   function refresh(): void {
     renderPuzzleList()
     renderBoardOnly()
+    renderDigitPad()
     if (!session) return
     const result = currentResult()
     if (!result) return
@@ -322,6 +389,7 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
       undo: [],
       redo: [],
     }
+    adapter.keyboard?.setCursor(session.state, null)
     writeLastPuzzle(puzzle.id)
     view.reset()
     refresh()
@@ -338,15 +406,6 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
 
   /* ———————————————————— 棋盘交互 ———————————————————— */
 
-  // 拖拽状态放在函数外：落子后棋盘会整体重绘（SVG 被替换），
-  // 新绑定的监听器需要接着上一段拖拽继续涂写，否则第二格之后就断了。
-  let dragging = false
-  let dragMoved = false
-  let lastClient = { x: 0, y: 0 }
-  let pending: { index: number } | null = null
-  let painting: { kind: 'cycle' | 'force'; to: number } | null = null
-  let painted = new Set<number>()
-
   function bindBoardEvents(): void {
     const board = $('#board')
     const svg = board.querySelector<SVGSVGElement>('svg.board-svg')
@@ -354,9 +413,11 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
 
     view.apply(svg)
 
-    svg.addEventListener('contextmenu', (e) => {
-      e.preventDefault()
-    })
+    // 平移画布：中键 / 左键拖空白 / Shift+左键拖
+    let panning = false
+    let pointerId: number | null = null
+    let lastClient = { x: 0, y: 0 }
+    let dragMoved = false
 
     const hitAt = (e: PointerEvent) => {
       if (!session) return null
@@ -365,6 +426,22 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
       const m = adapter.metricsFor(session.puzzle)
       return adapter.hitTest(m, session.puzzle, vb.x, vb.y)
     }
+
+    const startPan = (e: PointerEvent): void => {
+      panning = true
+      dragMoved = false
+      pointerId = e.pointerId
+      lastClient = { x: e.clientX, y: e.clientY }
+      try {
+        svg.setPointerCapture(e.pointerId)
+      } catch {
+        /* ignore */
+      }
+    }
+
+    svg.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+    })
 
     svg.addEventListener(
       'wheel',
@@ -379,101 +456,53 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
     )
 
     svg.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.button !== 1 && e.button !== 2) return
+      if (!session) return
       resumeAudio()
-      if (e.button === 1) {
-        // 中键拖动平移（滚轮缩放后也可用）
-        e.preventDefault()
-        dragging = true
-        dragMoved = true
-        painting = null
-        pending = null
-        lastClient = { x: e.clientX, y: e.clientY }
-        svg.setPointerCapture(e.pointerId)
-        return
-      }
-      if (e.button === 2) {
-        const hit = hitAt(e)
-        if (hit) {
-          if (!session) return
-          const to = adapter.rightClickValue(session.state, hit)
-          const from = adapter.valueAt(session.state, hit.index)
-          if (from !== to) {
-            pushMove({ index: hit.index, from, to })
-            refresh()
-          }
-        }
-        return
-      }
-      if (e.button !== 0) return
 
-      lastClient = { x: e.clientX, y: e.clientY }
-      dragging = true
-      dragMoved = false
-      painted = new Set()
-      const hit = hitAt(e)
-      if (hit) {
-        if (!session) return
-        const from = adapter.valueAt(session.state, hit.index)
-        const to = adapter.cycleValue(session.state, hit)
-        painting = from === to ? null : { kind: 'cycle', to }
-        pending = hit
-      } else {
-        painting = null
-        pending = null
+      if (e.button === 1) {
+        e.preventDefault()
+        startPan(e)
+        return
       }
-      svg.setPointerCapture(e.pointerId)
+
+      const hit = hitAt(e)
+      if (!hit) {
+        if (e.button === 0) startPan(e)
+        else setCursor(null)
+        return
+      }
+      if (e.shiftKey && e.button === 0) {
+        startPan(e)
+        return
+      }
+      // 左键 / 右键只选中并高亮，不写入、不循环、不拖动涂写
+      setCursor(hit.index)
     })
 
     svg.addEventListener('pointermove', (e) => {
-      if (!dragging) return
+      if (!panning || e.pointerId !== pointerId) return
       const dx = e.clientX - lastClient.x
       const dy = e.clientY - lastClient.y
-      if (!dragMoved && Math.hypot(dx, dy) < 6) return
+      if (!dragMoved && Math.hypot(dx, dy) < 4) return
       dragMoved = true
-      if (painting) {
-        // 拖拽涂写：沿途命中即落子
-        const hit = hitAt(e)
-        if (hit && !painted.has(hit.index)) {
-          if (!session) return
-          painted.add(hit.index)
-          const from = adapter.valueAt(session.state, hit.index)
-          const to =
-            painting.kind === 'force' ? painting.to : adapter.cycleValue(session.state, hit)
-          if (from !== to) {
-            pushMove({ index: hit.index, from, to })
-            refresh()
-          }
-        }
-        return
-      }
-      // 平移
       const rect = svg.getBoundingClientRect()
       view.panBy(dx, dy, svg, rect.width, rect.height)
       lastClient = { x: e.clientX, y: e.clientY }
     })
 
-    const endDrag = (e: PointerEvent) => {
-      if (!dragging) return
-      dragging = false
+    const endPan = (e: PointerEvent): void => {
+      if (!panning || e.pointerId !== pointerId) return
+      panning = false
+      pointerId = null
       try {
         svg.releasePointerCapture(e.pointerId)
       } catch {
         /* ignore */
       }
-      if (!dragMoved && pending && painting) {
-        if (!session) return
-        const from = adapter.valueAt(session.state, pending.index)
-        const to = painting.to
-        if (from !== to) {
-          pushMove({ index: pending.index, from, to })
-          refresh()
-        }
-      }
-      pending = null
-      painting = null
     }
-    svg.addEventListener('pointerup', endDrag)
-    svg.addEventListener('pointercancel', endDrag)
+    svg.addEventListener('pointerup', endPan)
+    svg.addEventListener('pointercancel', endPan)
   }
 
   /* ———————————————————— 撤销 / 重做 / 清空 ———————————————————— */
@@ -671,6 +700,7 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
         undo: [],
         redo: [],
       }
+      adapter.keyboard?.setCursor(session.state, null)
       writeLastPuzzle(p.id)
       view.reset()
       refresh()
@@ -755,6 +785,12 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
   on($('#btn-solve'), 'click', showSolution)
   on($('#btn-hint'), 'click', hint)
   on($('#btn-random'), 'click', pickRandomPuzzle)
+  on($('#digit-pad'), 'click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest('[data-digit]') as HTMLButtonElement | null
+    if (!btn) return
+    resumeAudio()
+    writeSelected(Number(btn.dataset.digit ?? '0'))
+  })
   on($('#btn-mute'), 'click', toggleMute)
   on($('#btn-custom'), 'click', () => custom.open())
   on($('#custom-regen'), 'click', () => custom.regen())
@@ -808,38 +844,27 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
     // 自定义题板键盘录入优先
     if (custom.handleKey(e)) return
 
-    // 键盘光标 / 数字键入（格子类游戏）
-    const keyboard = adapter.keyboard
-    if (keyboard && session) {
-      const cur = keyboard.cursor(session.state)
-      if (
-        e.key === 'ArrowLeft' ||
-        e.key === 'ArrowRight' ||
-        e.key === 'ArrowUp' ||
-        e.key === 'ArrowDown'
-      ) {
+    // 棋盘键盘输入：方向键移动选中格，1–9 填数，0 / 退格 / 删除 清除（不自动跳格）
+    if (session && adapter.keyboard) {
+      const cur = cursorIndex()
+      if (e.key.startsWith('Arrow')) {
         e.preventDefault()
         if (logicPlayer.playing) return
         const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0
         const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0
-        const next = keyboard.moveCursor(session.state, session.puzzle, cur, dx, dy)
-        if (next !== null) {
-          keyboard.setCursor(session.state, next)
-          saveState()
-          refresh()
-        }
+        const next = adapter.keyboard.moveCursor(session.state, session.puzzle, cur, dx, dy)
+        if (next !== null) setCursor(next)
         return
       }
-      if ((e.key >= '0' && e.key <= '9') || e.key === 'Backspace' || e.key === 'Delete') {
-        if (cur === null) return
+      if (cur === null) return
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
         e.preventDefault()
-        if (logicPlayer.playing) return
-        const digit = e.key >= '0' && e.key <= '9' ? Number(e.key) : 0
-        const move = keyboard.input(session.state, session.puzzle, cur, digit)
-        if (move) {
-          pushMove(move)
-          refresh()
-        }
+        writeSelected(0)
+        return
+      }
+      if (e.key.length === 1 && e.key >= '1' && e.key <= '9') {
+        e.preventDefault()
+        writeSelected(Number(e.key))
         return
       }
     }
@@ -919,6 +944,7 @@ export function createApp(root: HTMLElement, adapter: GameAdapter) {
   ;(window as unknown as Record<string, unknown>).__game = {
     adapter,
     getSession: () => session,
+    getCursor: () => cursorIndex(),
     selectPuzzle,
     setStatus,
   }
